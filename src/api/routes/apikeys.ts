@@ -183,9 +183,11 @@ export async function validateApiKey(
 	const keyHash = hashKey(key);
 
 	const rows = await sql`
-		SELECT id, user_id, scopes, expires_at
-		FROM api_keys
+		UPDATE api_keys
+		SET last_used_at = NOW()
 		WHERE key_hash = ${keyHash}
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		RETURNING id, user_id, scopes
 	`;
 
 	if (rows.length === 0) {
@@ -193,14 +195,6 @@ export async function validateApiKey(
 	}
 
 	const apiKey = rows[0];
-
-	if (apiKey.expires_at && new Date(apiKey.expires_at as string) < new Date()) {
-		return { valid: false };
-	}
-
-	await sql`
-		UPDATE api_keys SET last_used_at = NOW() WHERE id = ${apiKey.id}
-	`;
 
 	return {
 		valid: true,

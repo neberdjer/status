@@ -633,6 +633,7 @@ export async function stopChecker(
 }
 
 const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000;
+let cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
 async function cleanupOldChecks(): Promise<void> {
 	try {
@@ -661,8 +662,9 @@ export async function initializeCheckers(): Promise<void> {
 		checkIntervals.set(service.id, interval);
 	}
 
+	if (cleanupIntervalId) clearInterval(cleanupIntervalId);
 	cleanupOldChecks();
-	setInterval(cleanupOldChecks, CLEANUP_INTERVAL);
+	cleanupIntervalId = setInterval(cleanupOldChecks, CLEANUP_INTERVAL);
 }
 
 export async function startCheckerForService(serviceId: string): Promise<void> {
