@@ -188,20 +188,20 @@ export async function markUsed(
 		return badRequest("User ID required");
 	}
 
-	const existing = await sql`SELECT id, used_by FROM invites WHERE id = ${inviteId}`;
-	if (existing.length === 0) {
-		return notFound("Invite not found");
-	}
-
-	if (existing[0].used_by) {
-		return badRequest("Invite already used");
-	}
-
-	await sql`
+	const result = await sql`
 		UPDATE invites
 		SET used_by = ${userId}, used_at = NOW()
-		WHERE id = ${inviteId}
+		WHERE id = ${inviteId} AND used_by IS NULL
+		RETURNING id
 	`;
+
+	if (result.length === 0) {
+		const existing = await sql`SELECT id FROM invites WHERE id = ${inviteId}`;
+		if (existing.length === 0) {
+			return notFound("Invite not found");
+		}
+		return badRequest("Invite already used");
+	}
 
 	return ok({ message: "Invite marked as used" });
 }

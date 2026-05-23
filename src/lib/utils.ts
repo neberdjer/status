@@ -43,7 +43,9 @@ export function censorEmail(email: string): string {
 			? local[0] + "*".repeat(local.length - 2) + local[local.length - 1]
 			: "*".repeat(local.length);
 
-	const [domainName, tld] = domain.split(".");
+	const dotIndex = domain.lastIndexOf(".");
+	const domainName = dotIndex === -1 ? domain : domain.slice(0, dotIndex);
+	const tld = dotIndex === -1 ? "" : domain.slice(dotIndex + 1);
 	const censoredDomain =
 		domainName.length > 2
 			? domainName[0] +
@@ -51,7 +53,9 @@ export function censorEmail(email: string): string {
 				domainName[domainName.length - 1]
 			: "*".repeat(domainName.length);
 
-	return `${censoredLocal}@${censoredDomain}.${tld}`;
+	return tld
+		? `${censoredLocal}@${censoredDomain}.${tld}`
+		: `${censoredLocal}@${censoredDomain}`;
 }
 
 export async function copyToClipboard(text: string): Promise<boolean> {

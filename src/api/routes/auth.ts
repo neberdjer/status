@@ -93,28 +93,35 @@ export async function register(req: Request): Promise<Response> {
 		inviteId = invite.id as string;
 	}
 
-	const existing = await sql`
-		SELECT id FROM users WHERE username = ${username} OR email = ${email}
-	`;
-
-	if (existing.length > 0) {
-		return conflict("Username or email already exists");
-	}
-
 	const id = randomUUIDv7();
 	const passwordHash = hashPassword(password);
 
-	await sql`
-		INSERT INTO users (id, username, email, password_hash, role)
-		VALUES (${id}, ${username}, ${email}, ${passwordHash}, ${assignedRole})
-	`;
-
 	if (inviteId) {
-		await sql`
+		const claimed = await sql`
 			UPDATE invites
 			SET used_by = ${id}, used_at = NOW()
-			WHERE id = ${inviteId}
+			WHERE id = ${inviteId} AND used_by IS NULL
+			RETURNING id
 		`;
+		if (claimed.length === 0) {
+			return badRequest("Invite code already used");
+		}
+	}
+
+	try {
+		await sql`
+			INSERT INTO users (id, username, email, password_hash, role)
+			VALUES (${id}, ${username}, ${email}, ${passwordHash}, ${assignedRole})
+		`;
+	} catch (err) {
+		if (inviteId) {
+			await sql`UPDATE invites SET used_by = NULL, used_at = NULL WHERE id = ${inviteId}`;
+		}
+		const message = err instanceof Error ? err.message : "";
+		if (message.includes("duplicate") || message.includes("unique")) {
+			return conflict("Username or email already exists");
+		}
+		throw err;
 	}
 
 	return created({
