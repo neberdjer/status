@@ -4,17 +4,19 @@ import type { AuditLog } from "$lib";
 
 const { initialLogs = [] }: { initialLogs?: AuditLog[] } = $props();
 
-let logs = $derived<AuditLog[]>(initialLogs ?? []);
+let logs = $state<AuditLog[]>([]);
 let loading = $state(true);
 let total = $state(0);
 let page = $state(1);
 let perPage = $state(20);
 let selectedDate = $state("");
 let hasLoaded = $state(false);
+let fetchSeq = 0;
 
 const totalPages = $derived(Math.max(1, Math.ceil(total / perPage)));
 
 async function fetchLogs() {
+	const seq = ++fetchSeq;
 	loading = true;
 	try {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -27,8 +29,10 @@ async function fetchLogs() {
 		}
 
 		const res = await fetch(`/api/audit?${params.toString()}`);
+		if (seq !== fetchSeq) return;
 		if (res.ok) {
 			const json = await res.json();
+			if (seq !== fetchSeq) return;
 			logs = json.data?.logs ?? [];
 			total = json.data?.total ?? 0;
 		} else {
@@ -36,11 +40,12 @@ async function fetchLogs() {
 			total = 0;
 		}
 	} catch (err) {
+		if (seq !== fetchSeq) return;
 		console.error("Failed to fetch audit logs:", err);
 		logs = [];
 		total = 0;
 	} finally {
-		loading = false;
+		if (seq === fetchSeq) loading = false;
 	}
 }
 
@@ -59,6 +64,7 @@ function goToPage(newPage: number) {
 $effect(() => {
 	if (!hasLoaded) {
 		hasLoaded = true;
+		logs = initialLogs ?? [];
 		fetchLogs();
 	}
 });

@@ -260,7 +260,9 @@ export async function importData(req: Request): Promise<Response> {
 			stats.servicesCreated++;
 
 			if (service.enabled) {
-				startCheckerForService(id).catch(() => {});
+				startCheckerForService(id).catch((err) => {
+					console.error(`[Import] Failed to start checker for service ${id}:`, err);
+				});
 			}
 		}
 	}
