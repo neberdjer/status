@@ -305,13 +305,26 @@ export async function updatePositions(req: Request): Promise<Response> {
 		return badRequest("Positions array required");
 	}
 
-	for (const { id, position, groupName } of positions) {
-		const existing = await sql`SELECT created_by FROM services WHERE id = ${id}`;
-		if (existing.length === 0) continue;
+	const ids = positions.map((p: { id: string }) => p.id);
+	const existing = await sql`
+		SELECT id, created_by FROM services WHERE id = ANY(${sql.array(ids, "TEXT")})
+	`;
 
-		if (existing[0].created_by !== auth.user.id && !auth.isAdmin) {
+	const ownerById = new Map<string, string>();
+	for (const row of existing) {
+		ownerById.set(row.id as string, row.created_by as string);
+	}
+
+	for (const { id } of positions) {
+		const owner = ownerById.get(id);
+		if (owner === undefined) continue;
+		if (owner !== auth.user.id && !auth.isAdmin) {
 			return forbidden("Cannot modify service positions");
 		}
+	}
+
+	for (const { id, position, groupName } of positions) {
+		if (!ownerById.has(id)) continue;
 
 		if (groupName !== undefined) {
 			await sql`UPDATE services SET position = ${position}, group_name = ${groupName}, updated_at = NOW() WHERE id = ${id}`;

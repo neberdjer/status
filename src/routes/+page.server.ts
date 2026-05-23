@@ -238,21 +238,26 @@ export const actions: Actions = {
 			return fail(400, { editError: "Check interval must be between 10 and 3600 seconds", editServiceId: serviceId });
 		}
 
+		try {
+			await api.updateService(serviceId, {
+				name,
+				url,
+				displayUrl,
+				description,
+				expectedStatus,
+				expectedContentType,
+				expectedBody,
+				checkInterval,
+				enabled,
+				isPublic,
+				emailNotifications,
+				groupName,
+			}, sessionId);
+		} catch (err) {
+			return fail(500, { editError: err instanceof Error ? err.message : "Failed to update service", editServiceId: serviceId });
+		}
+
 		await api.stopChecker(serviceId, sessionId);
-		await api.updateService(serviceId, {
-			name,
-			url,
-			displayUrl,
-			description,
-			expectedStatus,
-			expectedContentType,
-			expectedBody,
-			checkInterval,
-			enabled,
-			isPublic,
-			emailNotifications,
-			groupName,
-		}, sessionId);
 		await api.auditLog(user.id, "update", "service", serviceId, { name, url, enabled, isPublic }, getClientAddress(), sessionId);
 
 		if (enabled) {
