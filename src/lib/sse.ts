@@ -3,11 +3,14 @@ import type { SSEMessage, CheckUpdateHandler } from "../types";
 export function createSSEConnection(onCheckUpdate: CheckUpdateHandler, apiUrl: string): () => void {
 	let eventSource: EventSource | null = null;
 	let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+	let disposed = false;
 
 	const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
 	const sseUrl = `${baseUrl}/events/stream`;
 
 	function connect() {
+		if (disposed) return;
+
 		if (eventSource) {
 			eventSource.close();
 		}
@@ -31,6 +34,7 @@ export function createSSEConnection(onCheckUpdate: CheckUpdateHandler, apiUrl: s
 		};
 
 		eventSource.onerror = () => {
+			if (disposed) return;
 			console.log("[SSE] Connection error, reconnecting...");
 			eventSource?.close();
 			eventSource = null;
@@ -45,11 +49,15 @@ export function createSSEConnection(onCheckUpdate: CheckUpdateHandler, apiUrl: s
 	connect();
 
 	return () => {
+		disposed = true;
 		if (reconnectTimeout) {
 			clearTimeout(reconnectTimeout);
+			reconnectTimeout = null;
 		}
 		if (eventSource) {
+			eventSource.onerror = null;
 			eventSource.close();
+			eventSource = null;
 		}
 	};
 }

@@ -29,11 +29,15 @@
 		isGroupView ? `/${encodeURIComponent(data.currentGroup!)}` : "/",
 	);
 
-	let checks = $derived<Record<string, ServiceCheck | null>>({ ...data.checks });
+	let liveChecks = $state<Record<string, ServiceCheck | null>>({});
+	const checks = $derived<Record<string, ServiceCheck | null>>({
+		...data.checks,
+		...liveChecks,
+	});
 
 	onMount(() => {
 		const cleanup = createSSEConnection((serviceId, check) => {
-			checks[serviceId] = check;
+			liveChecks[serviceId] = check;
 		}, data.apiUrl);
 		return cleanup;
 	});

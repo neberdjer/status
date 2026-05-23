@@ -20,7 +20,7 @@ const { data }: { data: PageData } = $props();
 
 const siteIcon = $derived(data.site.icon || favicon);
 
-const validTabs = $derived(() => {
+const validTabs = $derived.by(() => {
 	const base = ["account"];
 	if (data.user.role === "admin") {
 		base.push("site", "notifications", "events", "audit", "export");
@@ -28,7 +28,7 @@ const validTabs = $derived(() => {
 	return base;
 });
 
-const tabs = $derived(() => {
+const tabs = $derived.by(() => {
 	const base = [
 		{ id: "account", label: "account" },
 	];
@@ -44,9 +44,9 @@ const tabs = $derived(() => {
 	return base;
 });
 
-const activeTab = $derived(() => {
+const activeTab = $derived.by(() => {
 	const tabParam = page.url.searchParams.get("tab");
-	if (tabParam && validTabs().includes(tabParam)) {
+	if (tabParam && validTabs.includes(tabParam)) {
 		return tabParam;
 	}
 	return "account";
@@ -82,11 +82,11 @@ function setTab(tab: string) {
 		<h2>settings</h2>
 
 		<div class="tabs">
-			{#each tabs() as tab (tab.id)}
+			{#each tabs as tab (tab.id)}
 				<button
 					type="button"
 					class="tab"
-					class:active={activeTab() === tab.id}
+					class:active={activeTab === tab.id}
 					onclick={() => setTab(tab.id)}
 				>
 					{tab.label}
@@ -95,21 +95,21 @@ function setTab(tab: string) {
 		</div>
 
 		<div class="tab-content">
-			{#if activeTab() === "account"}
+			{#if activeTab === "account"}
 				<AccountSection user={data.user} />
 				<PasswordSection />
 				<ApiKeysSection />
 				<SessionSection />
-			{:else if activeTab() === "site"}
+			{:else if activeTab === "site"}
 				<SiteSection settings={data.siteSettings} />
 				<InvitesSection invites={data.invites} />
-			{:else if activeTab() === "notifications"}
+			{:else if activeTab === "notifications"}
 				<WebhooksSection webhooks={data.webhooks} groups={data.groups} settings={data.siteSettings} />
-			{:else if activeTab() === "events"}
+			{:else if activeTab === "events"}
 				<EventsSection events={data.events} groups={data.groups} />
-			{:else if activeTab() === "audit"}
+			{:else if activeTab === "audit"}
 				<AuditSection initialLogs={data.auditLogs} />
-			{:else if activeTab() === "export"}
+			{:else if activeTab === "export"}
 				<ExportSection groups={data.groups} />
 			{/if}
 		</div>
