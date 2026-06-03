@@ -159,7 +159,7 @@ async function performSingleCheck(service: Service, timeoutMs: number): Promise<
 	let errorMessage: string | null = null;
 
 	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 	try {
 		const response = await fetch(service.url, {
@@ -205,14 +205,17 @@ async function performSingleCheck(service: Service, timeoutMs: number): Promise<
 			errorMessage = errors.join("; ");
 		}
 	} catch (err) {
-		if (err instanceof Error) {
-			if (err.name === "AbortError") {
-				errorMessage = "Request timed out";
-			} else {
-				errorMessage = err.message;
-			}
+		if (controller.signal.aborted) {
+			errorMessage = "Request timed out";
+		} else if (err instanceof Error) {
+			const cause = (err as Error & { cause?: unknown }).cause;
+			const causeMessage =
+				cause instanceof Error ? cause.message : typeof cause === "string" ? cause : null;
+			errorMessage = causeMessage ? `${err.message}: ${causeMessage}` : err.message || err.name || "Connection failed";
+		} else if (typeof err === "string" && err) {
+			errorMessage = err;
 		} else {
-			errorMessage = "Unknown error";
+			errorMessage = "Connection failed";
 		}
 		success = false;
 	} finally {
