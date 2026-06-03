@@ -38,6 +38,9 @@
 	onMount(() => {
 		const cleanup = createSSEConnection((serviceId, check) => {
 			liveChecks[serviceId] = check;
+			if (selectedService?.id === serviceId) {
+				serviceChecks = [check, ...serviceChecks].slice(0, 100);
+			}
 		}, data.apiUrl);
 		return cleanup;
 	});
