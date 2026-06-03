@@ -3,6 +3,7 @@ import { sql } from "../index";
 import type { Group, Service } from "../types";
 import { getAuthContext, requireAuth, requireAdmin } from "../utils/auth";
 import { ok, created, noContent, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
+import { cleanupServiceState } from "./checks";
 
 function rowToService(row: Record<string, unknown>): Service {
 	return {
@@ -287,6 +288,7 @@ export async function remove(
 		return forbidden("Cannot delete this service");
 	}
 
+	cleanupServiceState(id);
 	await sql`DELETE FROM services WHERE id = ${id}`;
 
 	return noContent();

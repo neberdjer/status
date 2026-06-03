@@ -552,9 +552,17 @@ export async function runCheck(
 		return forbidden("Cannot run check for this service");
 	}
 
-	const check = await performCheck(service);
+	await performScheduledCheck(service);
 
-	return ok({ check });
+	const latest = await sql`
+		SELECT id, service_id, status_code, response_time, success, error_message, checked_at
+		FROM service_checks
+		WHERE service_id = ${serviceId}
+		ORDER BY checked_at DESC
+		LIMIT 1
+	`;
+
+	return ok({ check: latest.length > 0 ? rowToCheck(latest[0]) : null });
 }
 
 export async function startChecker(
@@ -647,6 +655,20 @@ async function cleanupOldChecks(): Promise<void> {
 }
 
 export async function initializeCheckers(): Promise<void> {
+	const lastChecks = await sql`
+		SELECT DISTINCT ON (service_id) service_id, success
+		FROM service_checks
+		ORDER BY service_id, checked_at DESC
+	`;
+	for (const row of lastChecks) {
+		const serviceId = row.service_id as string;
+		const success = row.success as boolean;
+		lastCheckStatus.set(serviceId, success);
+		if (!success) {
+			notifiedDown.set(serviceId, true);
+		}
+	}
+
 	const rows = await sql`
 		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
@@ -670,6 +692,16 @@ export async function initializeCheckers(): Promise<void> {
 	cleanupIntervalId = setInterval(cleanupOldChecks, CLEANUP_INTERVAL);
 }
 
+export function cleanupServiceState(serviceId: string): void {
+	const interval = checkIntervals.get(serviceId);
+	if (interval) clearInterval(interval);
+	checkIntervals.delete(serviceId);
+	lastCheckStatus.delete(serviceId);
+	consecutiveFailures.delete(serviceId);
+	notifiedDown.delete(serviceId);
+	checkInProgress.delete(serviceId);
+}
+
 export async function startCheckerForService(serviceId: string): Promise<void> {
 	const rows = await sql`
 		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
@@ -685,7 +717,9 @@ export async function startCheckerForService(serviceId: string): Promise<void> {
 		clearInterval(checkIntervals.get(serviceId));
 	}
 
-	performScheduledCheck(service);
+	performScheduledCheck(service).catch((err) => {
+		console.error(`[Check] Initial check failed for ${service.name}:`, err);
+	});
 
 	const interval = setInterval(() => {
 		performScheduledCheck(service);
