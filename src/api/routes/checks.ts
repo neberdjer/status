@@ -702,6 +702,21 @@ export function cleanupServiceState(serviceId: string): void {
 	checkInProgress.delete(serviceId);
 }
 
+export function stopAllCheckers(): void {
+	for (const interval of checkIntervals.values()) {
+		clearInterval(interval);
+	}
+	checkIntervals.clear();
+	if (cleanupIntervalId) {
+		clearInterval(cleanupIntervalId);
+		cleanupIntervalId = null;
+	}
+}
+
+export function checksInFlight(): number {
+	return checkInProgress.size;
+}
+
 export async function startCheckerForService(serviceId: string): Promise<void> {
 	const rows = await sql`
 		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at

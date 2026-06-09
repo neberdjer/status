@@ -33,5 +33,9 @@ RUN mkdir -p /usr/src/app/cache && chown bun:bun /usr/src/app/cache
 
 USER bun
 WORKDIR /usr/src/app
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+	CMD bun -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3001)+'/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
 ENTRYPOINT [ "bun", "run" ]
 CMD [ "start" ]
