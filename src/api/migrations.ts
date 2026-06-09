@@ -62,9 +62,11 @@ export async function runMigrations(sql: SQL): Promise<void> {
 	`);
 
 	const ADVISORY_LOCK_KEY = 4242891337;
-	await sql`SELECT pg_advisory_lock(${ADVISORY_LOCK_KEY})`;
-	try {
-		const executed = await sql`SELECT id FROM schema_migrations`;
+
+	await sql.begin(async (tx) => {
+		await tx`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`;
+
+		const executed = await tx`SELECT id FROM schema_migrations`;
 		const executedIds = new Set(executed.map((r: { id: string }) => r.id));
 
 		const pending = migrations.filter((m) => !executedIds.has(m.id));
@@ -78,20 +80,16 @@ export async function runMigrations(sql: SQL): Promise<void> {
 		for (const migration of pending) {
 			logger.debug(`Running migration: ${migration.id} - ${migration.name}`);
 			const checksum = generateChecksum(migration.upSql);
-			await sql.begin(async (tx) => {
-				await tx.unsafe(migration.upSql);
-				await tx`
-					INSERT INTO schema_migrations (id, name, checksum)
-					VALUES (${migration.id}, ${migration.name}, ${checksum})
-				`;
-			});
+			await tx.unsafe(migration.upSql);
+			await tx`
+				INSERT INTO schema_migrations (id, name, checksum)
+				VALUES (${migration.id}, ${migration.name}, ${checksum})
+			`;
 			logger.debug(`Migration ${migration.id} completed`);
 		}
 
 		logger.info("All migrations completed successfully");
-	} finally {
-		await sql`SELECT pg_advisory_unlock(${ADVISORY_LOCK_KEY})`.catch(() => {});
-	}
+	});
 }
 
 function generateChecksum(input: string): string {
