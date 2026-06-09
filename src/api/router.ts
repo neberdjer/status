@@ -12,8 +12,9 @@ import * as webhooks from "./routes/webhooks";
 import { handleSSE } from "./utils/sse";
 import { notFound } from "./utils/response";
 import type { Route } from "../types";
+import { env } from "./env";
 
-const basePath = process.env.API_BASE_PATH || "";
+const basePath = env.apiBasePath;
 
 const routes: Route[] = [
 	{

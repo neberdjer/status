@@ -1,13 +1,13 @@
 import { Echo } from "@atums/echo";
 import { SQL } from "bun";
+import { env } from "./env";
 import { runMigrations } from "./migrations";
 import { router } from "./router";
 import { checksInFlight, initializeCheckers, stopAllCheckers } from "./routes/checks";
 
 const logger = new Echo({ disableFile: true });
 
-const dbUrl = process.env.DATABASE_URL || "postgres://localhost:5432/status";
-export const sql = new SQL(dbUrl);
+export const sql = new SQL(env.databaseUrl);
 
 process.on("unhandledRejection", (reason) => {
 	logger.error("Unhandled rejection:", reason);
@@ -58,12 +58,9 @@ await waitForDb();
 await withDbRetry("migrations", () => runMigrations(sql));
 await withDbRetry("initializeCheckers", () => initializeCheckers());
 
-const apiPort = Number(process.env.API_PORT) || 3001;
-const apiHost = process.env.API_HOST || "0.0.0.0";
-
 const server = Bun.serve({
-	hostname: apiHost,
-	port: apiPort,
+	hostname: env.apiHost,
+	port: env.apiPort,
 	idleTimeout: 255,
 	async fetch(req) {
 		const url = new URL(req.url);
