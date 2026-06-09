@@ -9,7 +9,7 @@
 		"dev:web": "bunx vite dev",
 		"build": "bun run scripts/build.ts",
 		"preview": "bunx vite preview",
-		"start": "bun run start:api & bun run start:web",
+		"start": "bun run scripts/start.ts",
 		"start:api": "bun run src/api/index.ts",
 		"start:web": "bun run build/index.js",
 		"prepare": "svelte-kit sync || echo ''",
