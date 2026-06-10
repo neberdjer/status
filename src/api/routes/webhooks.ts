@@ -2,7 +2,7 @@ import { randomUUIDv7 } from "bun";
 import { sql } from "../index";
 import type { Webhook, WebhookType } from "../../types";
 import { getAuthContext, requireAuth, requireAdmin } from "../utils/auth";
-import { ok, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
+import { ok, created, noContent, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
 
 function rowToWebhook(row: Record<string, unknown>): Webhook {
 	return {
@@ -79,7 +79,7 @@ export async function create(req: Request): Promise<Response> {
 		FROM webhooks WHERE id = ${id}
 	`;
 
-	return ok({ webhook: rowToWebhook(rows[0]) });
+	return created({ webhook: rowToWebhook(rows[0]) });
 }
 
 export async function update(
@@ -171,7 +171,7 @@ export async function remove(
 
 	await sql`DELETE FROM webhooks WHERE id = ${webhookId}`;
 
-	return ok({ deleted: true });
+	return noContent();
 }
 
 export async function getWebhooksForGroup(groupName: string | null): Promise<Webhook[]> {
