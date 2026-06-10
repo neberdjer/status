@@ -96,29 +96,31 @@ export async function register(req: Request): Promise<Response> {
 	const id = randomUUIDv7();
 	const passwordHash = hashPassword(password);
 
-	if (inviteId) {
-		const claimed = await sql`
-			UPDATE invites
-			SET used_by = ${id}, used_at = NOW()
-			WHERE id = ${inviteId} AND used_by IS NULL
-			RETURNING id
-		`;
-		if (claimed.length === 0) {
+	try {
+		await sql.begin(async (tx) => {
+			await tx`
+				INSERT INTO users (id, username, email, password_hash, role)
+				VALUES (${id}, ${username}, ${email}, ${passwordHash}, ${assignedRole})
+			`;
+			if (inviteId) {
+				const claimed = await tx`
+					UPDATE invites
+					SET used_by = ${id}, used_at = NOW()
+					WHERE id = ${inviteId} AND used_by IS NULL
+					RETURNING id
+				`;
+				if (claimed.length === 0) {
+					throw new Error("INVITE_USED");
+				}
+			}
+		});
+	} catch (err) {
+		const message = err instanceof Error ? err.message : "";
+		const code = (err as { errno?: string } | null)?.errno;
+		if (message === "INVITE_USED") {
 			return badRequest("Invite code already used");
 		}
-	}
-
-	try {
-		await sql`
-			INSERT INTO users (id, username, email, password_hash, role)
-			VALUES (${id}, ${username}, ${email}, ${passwordHash}, ${assignedRole})
-		`;
-	} catch (err) {
-		if (inviteId) {
-			await sql`UPDATE invites SET used_by = NULL, used_at = NULL WHERE id = ${inviteId}`;
-		}
-		const message = err instanceof Error ? err.message : "";
-		if (message.includes("duplicate") || message.includes("unique")) {
+		if (code === "23505" || message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique")) {
 			return conflict("Username or email already exists");
 		}
 		throw err;
