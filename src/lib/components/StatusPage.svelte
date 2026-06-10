@@ -601,69 +601,111 @@
 		return () => window.removeEventListener("resize", checkMobile);
 	});
 
+	const FAILED_Y = 4;
+
 	const graphData = $derived.by(() => {
 		if (serviceChecks.length === 0)
 			return {
 				points: [],
+				lineSegments: [],
 				maxTime: 0,
 				minTime: 0,
 				timeLabels: [],
 				yLabels: [],
+				hasSuccess: false,
 			};
 
 		const maxPoints = isMobile ? 20 : 50;
-		const allChecks = [...serviceChecks].reverse();
-		const step =
-			allChecks.length > maxPoints
-				? Math.ceil(allChecks.length / maxPoints)
-				: 1;
-		const reversed = allChecks.filter((_, i) => i % step === 0);
-		const times = reversed.map((c) => c.responseTime ?? 0);
-		const maxTime = Math.max(...times);
-		const minTime = Math.min(...times);
+		const chronological = [...serviceChecks].reverse();
+
+		let sampled = chronological;
+		if (chronological.length > maxPoints) {
+			const bucketSize = chronological.length / maxPoints;
+			sampled = [];
+			for (let i = 0; i < maxPoints; i++) {
+				const start = Math.floor(i * bucketSize);
+				const end = Math.floor((i + 1) * bucketSize);
+				const bucket = chronological.slice(start, end);
+				if (bucket.length === 0) continue;
+				const hasFailure = bucket.some((c) => !c.success);
+				const pick = hasFailure
+					? bucket.find((c) => !c.success)!
+					: bucket.reduce((worst, c) =>
+						(c.responseTime ?? 0) > (worst.responseTime ?? 0) ? c : worst,
+					);
+				sampled.push(pick);
+			}
+		}
+
+		const successful = sampled.filter((c) => c.success);
+		const hasSuccess = successful.length > 0;
+		const okTimes = successful.map((c) => c.responseTime ?? 0);
+		const maxTime = hasSuccess ? Math.max(...okTimes) : 0;
+		const minTime = hasSuccess ? Math.min(...okTimes) : 0;
 		const padding = 10;
 
-		const getY = (responseTime: number) => {
-			if (maxTime === minTime) return 50;
+		const getY = (check: ServiceCheck) => {
+			if (!check.success) return FAILED_Y;
+			if (!hasSuccess || maxTime === minTime) return 50;
+			const rt = check.responseTime ?? 0;
 			return (
 				padding +
-				((maxTime - responseTime) / (maxTime - minTime)) *
-					(100 - padding * 2)
+				((maxTime - rt) / (maxTime - minTime)) * (100 - padding * 2)
 			);
 		};
 
-		const timeLabels: { x: number; label: string }[] = [];
-		if (reversed.length > 0) {
-			const first = reversed[0];
-			const last = reversed[reversed.length - 1];
-			const mid = reversed[Math.floor(reversed.length / 2)];
+		const points = sampled.map((check, i) => ({
+			x: (i / (sampled.length - 1 || 1)) * 100,
+			y: getY(check),
+			check,
+		}));
 
-			timeLabels.push({ x: 0, label: formatGraphDate(first.checkedAt) });
-			if (reversed.length > 2) {
+		const lineSegments: string[] = [];
+		let current = "";
+		for (let i = 0; i < points.length; i++) {
+			const p = points[i];
+			if (!p.check.success) {
+				if (current) {
+					lineSegments.push(current);
+					current = "";
+				}
+				continue;
+			}
+			current += `${current ? " L" : "M"} ${p.x} ${p.y}`;
+		}
+		if (current) lineSegments.push(current);
+
+		const timeLabels: { x: number; label: string }[] = [];
+		if (sampled.length > 0) {
+			timeLabels.push({ x: 0, label: formatGraphDate(sampled[0].checkedAt) });
+			if (sampled.length > 2) {
 				timeLabels.push({
 					x: 50,
-					label: formatGraphDate(mid.checkedAt),
+					label: formatGraphDate(sampled[Math.floor(sampled.length / 2)].checkedAt),
 				});
 			}
-			timeLabels.push({ x: 100, label: formatGraphDate(last.checkedAt) });
+			timeLabels.push({
+				x: 100,
+				label: formatGraphDate(sampled[sampled.length - 1].checkedAt),
+			});
 		}
 
-		const yLabels = [
-			{ y: padding, label: formatTime(maxTime) },
-			{ y: 50, label: formatTime((maxTime + minTime) / 2) },
-			{ y: 100 - padding, label: formatTime(minTime) },
-		];
+		const yLabels = hasSuccess
+			? [
+				{ y: padding, label: formatTime(maxTime) },
+				{ y: 50, label: formatTime((maxTime + minTime) / 2) },
+				{ y: 100 - padding, label: formatTime(minTime) },
+			]
+			: [];
 
 		return {
-			points: reversed.map((check, i) => ({
-				x: (i / (reversed.length - 1 || 1)) * 100,
-				y: getY(check.responseTime ?? 0),
-				check,
-			})),
+			points,
+			lineSegments,
 			maxTime,
 			minTime,
 			timeLabels,
 			yLabels,
+			hasSuccess,
 		};
 	});
 
@@ -1618,21 +1660,31 @@
 											y2="100"
 											class="grid-line"
 										/>
-										<polygon
-											fill="var(--color-accent-muted)"
-											opacity="0.3"
-											points={`0,100 ${graphData.points.map((p) => `${p.x},${p.y}`).join(" ")} 100,100`}
-										/>
-										<polyline
-											fill="none"
-											stroke="var(--color-accent)"
-											stroke-width="0.5"
-											stroke-linejoin="round"
-											points={graphData.points
-												.map((p) => `${p.x},${p.y}`)
-												.join(" ")}
-										/>
+										{#each graphData.lineSegments as segment}
+											<path
+												d={segment}
+												fill="none"
+												stroke="var(--color-accent)"
+												stroke-width="1.5"
+												stroke-linejoin="round"
+												stroke-linecap="round"
+												vector-effect="non-scaling-stroke"
+											/>
+										{/each}
 										{#each graphData.points as point}
+											<circle
+												cx={point.x}
+												cy={point.y}
+												r="6"
+												fill="transparent"
+												class="data-point-hitbox"
+												onmouseenter={() =>
+													(hoveredPoint = {
+														check: point.check,
+														x: point.x,
+														y: point.y,
+													})}
+											/>
 											<circle
 												cx={point.x}
 												cy={point.y}
@@ -1642,12 +1694,6 @@
 													: "var(--color-error)"}
 												class="data-point"
 												role="img"
-												onmouseenter={() =>
-													(hoveredPoint = {
-														check: point.check,
-														x: point.x,
-														y: point.y,
-													})}
 											/>
 										{/each}
 									</svg>
