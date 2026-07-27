@@ -26,6 +26,7 @@
 	const groupWebhooks = $derived(webhooks.filter((w) => !w.isGlobal));
 
 	let retryCount = $state(0);
+	let checkUserAgent = $state("");
 	let smtpHost = $state("");
 	let smtpPort = $state("587");
 	let smtpUser = $state("");
@@ -55,6 +56,7 @@
 	$effect(() => {
 		if (settings) {
 			retryCount = settings.retryCount || 0;
+			checkUserAgent = settings.checkUserAgent || "";
 			smtpHost = settings.smtpHost || "";
 			smtpPort = settings.smtpPort || "587";
 			smtpUser = settings.smtpUser || "";
@@ -112,7 +114,7 @@
 </script>
 
 <section class="settings-section">
-	<h3>retry</h3>
+	<h3>checks</h3>
 
 	<form
 		method="POST"
@@ -121,11 +123,11 @@
 		use:enhance={() => {
 			return async ({ result, update }) => {
 				if (result.type === "success") {
-					notifications.success("retry settings saved");
+					notifications.success("check settings saved");
 					await update();
 				} else if (result.type === "failure") {
 					const error = result.data?.siteError as string | undefined;
-					notifications.error(error || "failed to save retry settings");
+					notifications.error(error || "failed to save check settings");
 				}
 			};
 		}}
@@ -142,6 +144,22 @@
 			/>
 			<label for="retryCount">retry count (0-10)</label>
 			<p class="field-hint">failed checks before sending notifications</p>
+		</div>
+
+		<div class="form-group">
+			<input
+				type="text"
+				id="checkUserAgent"
+				name="checkUserAgent"
+				placeholder=" "
+				maxlength="512"
+				bind:value={checkUserAgent}
+			/>
+			<label for="checkUserAgent">default user-agent</label>
+			<p class="field-hint">
+				sent with every check unless a service sets its own. empty uses
+				atums-status/1.0
+			</p>
 		</div>
 
 		<button type="submit" class="btn">save</button>

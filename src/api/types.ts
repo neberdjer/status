@@ -5,6 +5,7 @@ export type {
 	ApiResponse,
 	AuditLog,
 	AuthContext,
+	CheckErrorDetail,
 	ExportData,
 	ExportGroup,
 	ExportService,

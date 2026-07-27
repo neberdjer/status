@@ -215,6 +215,7 @@ export const actions: Actions = {
 			formData.get("checkInterval")?.toString() || "60",
 			10,
 		);
+		const userAgent = formData.get("userAgent")?.toString().trim() || null;
 		const enabled = formData.get("enabled") === "on";
 		const isPublic = formData.get("isPublic") === "on";
 		const emailNotifications = formData.get("emailNotifications") === "on";
@@ -248,6 +249,7 @@ export const actions: Actions = {
 				expectedContentType,
 				expectedBody,
 				checkInterval,
+				userAgent,
 				enabled,
 				isPublic,
 				emailNotifications,
@@ -292,6 +294,7 @@ export const actions: Actions = {
 			formData.get("checkInterval")?.toString() || "60",
 			10,
 		);
+		const userAgent = formData.get("userAgent")?.toString().trim() || null;
 		const enabled = formData.get("enabled") === "on";
 		const isPublic = formData.get("isPublic") === "on";
 		const emailNotifications = formData.get("emailNotifications") === "on";
@@ -314,6 +317,7 @@ export const actions: Actions = {
 				expectedContentType,
 				expectedBody,
 				checkInterval,
+				userAgent,
 				enabled,
 				isPublic,
 				emailNotifications,

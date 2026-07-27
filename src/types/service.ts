@@ -8,6 +8,7 @@ export interface Service {
 	expectedContentType: string | null;
 	expectedBody: string | null;
 	checkInterval: number;
+	userAgent: string | null;
 	enabled: boolean;
 	isPublic: boolean;
 	emailNotifications: boolean;
@@ -18,6 +19,20 @@ export interface Service {
 	updatedAt: string;
 }
 
+export type CheckErrorType =
+	| "status"
+	| "content-type"
+	| "body"
+	| "timeout"
+	| "connection";
+
+export interface CheckErrorDetail {
+	type: CheckErrorType;
+	message: string;
+	expected?: string;
+	actual?: string;
+}
+
 export interface ServiceCheck {
 	id: string;
 	serviceId: string;
@@ -25,6 +40,7 @@ export interface ServiceCheck {
 	responseTime: number | null;
 	success: boolean;
 	errorMessage: string | null;
+	errorDetails: CheckErrorDetail[] | null;
 	checkedAt: string;
 }
 

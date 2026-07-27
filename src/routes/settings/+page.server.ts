@@ -269,6 +269,9 @@ export const actions: Actions = {
 		if (data.has("retryCount")) {
 			settings.retryCount = Number.parseInt(data.get("retryCount")?.toString() || "0", 10);
 		}
+		if (data.has("checkUserAgent")) {
+			settings.checkUserAgent = data.get("checkUserAgent")?.toString().trim() || "";
+		}
 		if (data.has("emailTo")) settings.emailTo = data.get("emailTo")?.toString() || "";
 
 		try {

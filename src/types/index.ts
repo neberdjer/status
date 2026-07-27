@@ -1,5 +1,5 @@
 export type { User } from "./user";
-export type { Service, ServiceCheck, ServiceStats } from "./service";
+export type { Service, ServiceCheck, ServiceStats, CheckErrorDetail, CheckErrorType } from "./service";
 export type { Group, MasterGroup } from "./group";
 export type { EventType, EventStatus, StatusEvent } from "./event";
 export type { NotificationType, Notification } from "./notification";

@@ -67,14 +67,14 @@
 				"path": "/services",
 				"desc": "create a new service",
 				"scopes": ["services:write"],
-				"request": "{\n  \"name\": \"My API\",\n  \"url\": \"https://api.example.com/health\",\n  \"displayUrl\": \"api.example.com\",\n  \"expectedStatus\": 200,\n  \"checkInterval\": 60,\n  \"enabled\": true,\n  \"isPublic\": true,\n  \"groupName\": \"Production\"\n}",
+				"request": "{\n  \"name\": \"My API\",\n  \"url\": \"https://api.example.com/health\",\n  \"displayUrl\": \"api.example.com\",\n  \"expectedStatus\": 200,\n  \"checkInterval\": 60,\n  \"userAgent\": \"my-monitor/1.0\",\n  \"enabled\": true,\n  \"isPublic\": true,\n  \"groupName\": \"Production\"\n}",
 				"response": "{\n  \"success\": true,\n  \"data\": { \"service\": { \"id\": \"uuid\", ... } }\n}"
 			},
 			{
 				"method": "GET",
 				"path": "/services/:id",
 				"desc": "get service by id (public services accessible without auth)",
-				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"service\": {\n      \"id\": \"uuid\",\n      \"name\": \"API Server\",\n      \"url\": \"https://api.example.com/health\",\n      \"displayUrl\": \"api.example.com\",\n      \"expectedStatus\": 200,\n      \"expectedContentType\": \"application/json\",\n      \"expectedBody\": null,\n      \"checkInterval\": 60,\n      \"enabled\": true,\n      \"isPublic\": true,\n      \"emailNotifications\": true,\n      \"groupName\": \"Production\",\n      \"position\": 0,\n      \"createdBy\": \"uuid\",\n      \"createdAt\": \"2025-01-01T00:00:00.000Z\"\n    }\n  }\n}"
+				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"service\": {\n      \"id\": \"uuid\",\n      \"name\": \"API Server\",\n      \"url\": \"https://api.example.com/health\",\n      \"displayUrl\": \"api.example.com\",\n      \"expectedStatus\": 200,\n      \"expectedContentType\": \"application/json\",\n      \"expectedBody\": null,\n      \"checkInterval\": 60,\n      \"userAgent\": null,\n      \"enabled\": true,\n      \"isPublic\": true,\n      \"emailNotifications\": true,\n      \"groupName\": \"Production\",\n      \"position\": 0,\n      \"createdBy\": \"uuid\",\n      \"createdAt\": \"2025-01-01T00:00:00.000Z\"\n    }\n  }\n}"
 			},
 			{
 				"method": "PUT",
@@ -165,13 +165,13 @@
 				"method": "GET",
 				"path": "/checks/service/:id",
 				"desc": "get check history for a service",
-				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"checks\": [\n      {\n        \"id\": \"uuid\",\n        \"serviceId\": \"uuid\",\n        \"statusCode\": 200,\n        \"responseTime\": 150,\n        \"success\": true,\n        \"errorMessage\": null,\n        \"checkedAt\": \"2025-01-01T00:00:00.000Z\"\n      }\n    ]\n  }\n}"
+				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"checks\": [\n      {\n        \"id\": \"uuid\",\n        \"serviceId\": \"uuid\",\n        \"statusCode\": 200,\n        \"responseTime\": 150,\n        \"success\": true,\n        \"errorMessage\": null,\n        \"errorDetails\": null,\n        \"checkedAt\": \"2025-01-01T00:00:00.000Z\"\n      }\n    ]\n  }\n}"
 			},
 			{
 				"method": "GET",
 				"path": "/checks/service/:id/latest",
 				"desc": "get latest check for a service",
-				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"check\": {\n      \"id\": \"uuid\",\n      \"serviceId\": \"uuid\",\n      \"statusCode\": 200,\n      \"responseTime\": 150,\n      \"success\": true,\n      \"errorMessage\": null,\n      \"checkedAt\": \"2025-01-01T00:00:00.000Z\"\n    }\n  }\n}"
+				"response": "{\n  \"success\": true,\n  \"data\": {\n    \"check\": {\n      \"id\": \"uuid\",\n      \"serviceId\": \"uuid\",\n      \"statusCode\": 200,\n      \"responseTime\": 150,\n      \"success\": true,\n      \"errorMessage\": null,\n      \"errorDetails\": null,\n      \"checkedAt\": \"2025-01-01T00:00:00.000Z\"\n    }\n  }\n}"
 			},
 			{
 				"method": "GET",

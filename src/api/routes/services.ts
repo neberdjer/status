@@ -3,6 +3,7 @@ import { sql } from "../index";
 import type { Group, Service } from "../types";
 import { getAuthContext, requireAuth, requireAdmin } from "../utils/auth";
 import { ok, created, noContent, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
+import { sanitizeUserAgent } from "../utils/sanitize";
 import { cleanupServiceState } from "./checks";
 
 function rowToService(row: Record<string, unknown>): Service {
@@ -16,6 +17,7 @@ function rowToService(row: Record<string, unknown>): Service {
 		expectedContentType: row.expected_content_type as string | null,
 		expectedBody: row.expected_body as string | null,
 		checkInterval: row.check_interval as number,
+		userAgent: row.user_agent as string | null,
 		enabled: row.enabled as boolean,
 		isPublic: row.is_public as boolean,
 		emailNotifications: (row.email_notifications as boolean) || false,
@@ -45,7 +47,7 @@ export async function list(req: Request): Promise<Response> {
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		ORDER BY position ASC, created_at ASC
 	`;
@@ -55,7 +57,7 @@ export async function list(req: Request): Promise<Response> {
 
 export async function listPublic(): Promise<Response> {
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE is_public = true AND enabled = true
 		ORDER BY position ASC, created_at ASC
@@ -84,7 +86,7 @@ export async function listByUser(
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE created_by = ${userId}
 		ORDER BY position ASC, created_at ASC
@@ -104,7 +106,7 @@ export async function get(
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${id}
 	`;
@@ -144,6 +146,7 @@ export async function create(req: Request): Promise<Response> {
 		expectedContentType = null,
 		expectedBody = null,
 		checkInterval = 60,
+		userAgent = null,
 		enabled = true,
 		isPublic = false,
 		emailNotifications = false,
@@ -168,12 +171,12 @@ export async function create(req: Request): Promise<Response> {
 	const nextPosition = position ?? (maxPosResult[0]?.next_pos || 0);
 
 	await sql`
-		INSERT INTO services (id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by)
-		VALUES (${id}, ${name}, ${description || null}, ${url}, ${displayUrl || null}, ${expectedStatus}, ${expectedContentType}, ${expectedBody}, ${checkInterval}, ${enabled}, ${isPublic}, ${emailNotifications}, ${groupName || null}, ${nextPosition}, ${createdBy})
+		INSERT INTO services (id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by)
+		VALUES (${id}, ${name}, ${description || null}, ${url}, ${displayUrl || null}, ${expectedStatus}, ${expectedContentType}, ${expectedBody}, ${checkInterval}, ${sanitizeUserAgent(userAgent)}, ${enabled}, ${isPublic}, ${emailNotifications}, ${groupName || null}, ${nextPosition}, ${createdBy})
 	`;
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${id}
 	`;
@@ -215,6 +218,7 @@ export async function update(
 		expectedContentType,
 		expectedBody,
 		checkInterval,
+		userAgent,
 		enabled,
 		isPublic,
 		emailNotifications,
@@ -239,6 +243,7 @@ export async function update(
 	if (expectedContentType !== undefined) updates.expected_content_type = expectedContentType;
 	if (expectedBody !== undefined) updates.expected_body = expectedBody;
 	if (checkInterval !== undefined) updates.check_interval = checkInterval;
+	if (userAgent !== undefined) updates.user_agent = sanitizeUserAgent(userAgent);
 	if (enabled !== undefined) updates.enabled = enabled;
 	if (isPublic !== undefined) updates.is_public = isPublic;
 	if (emailNotifications !== undefined) updates.email_notifications = emailNotifications;
@@ -256,7 +261,7 @@ export async function update(
 	`;
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${id}
 	`;

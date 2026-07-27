@@ -1,6 +1,6 @@
 import { randomUUIDv7 } from "bun";
 import { sql } from "../index";
-import type { Service, ServiceCheck } from "../types";
+import type { CheckErrorDetail, Service, ServiceCheck } from "../types";
 import { getAuthContext, requireAuth } from "../utils/auth";
 import { ok, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
 import { sendServiceDown, sendServiceUp } from "../utils/discord";
@@ -39,6 +39,19 @@ function isServiceEmailEnabled(service: Service): boolean {
 	return service.emailNotifications === true;
 }
 
+function parseErrorDetails(value: unknown): CheckErrorDetail[] | null {
+	if (!value) return null;
+	if (typeof value === "string") {
+		try {
+			const parsed = JSON.parse(value);
+			return Array.isArray(parsed) ? parsed : null;
+		} catch {
+			return null;
+		}
+	}
+	return Array.isArray(value) ? (value as CheckErrorDetail[]) : null;
+}
+
 function rowToCheck(row: Record<string, unknown>): ServiceCheck {
 	return {
 		id: row.id as string,
@@ -47,6 +60,7 @@ function rowToCheck(row: Record<string, unknown>): ServiceCheck {
 		responseTime: row.response_time as number,
 		success: row.success as boolean,
 		errorMessage: row.error_message as string | null,
+		errorDetails: parseErrorDetails(row.error_details),
 		checkedAt: row.checked_at as string,
 	};
 }
@@ -62,6 +76,7 @@ function rowToService(row: Record<string, unknown>): Service {
 		expectedContentType: row.expected_content_type as string | null,
 		expectedBody: row.expected_body as string | null,
 		checkInterval: row.check_interval as number,
+		userAgent: row.user_agent as string | null,
 		enabled: row.enabled as boolean,
 		isPublic: row.is_public as boolean,
 		emailNotifications: (row.email_notifications as boolean) || false,
@@ -79,31 +94,37 @@ const consecutiveFailures = new Map<string, number>();
 const notifiedDown = new Map<string, boolean>();
 const checkInProgress = new Set<string>();
 
-const SETTINGS_CACHE_TTL = 60_000;
-let cachedRetryCount: { value: number; expires: number } | null = null;
-let cachedCheckTimeout: { value: number; expires: number } | null = null;
+const DEFAULT_USER_AGENT = "atums-status/1.0";
+const DEFAULT_CHECK_TIMEOUT = 30000;
 
-async function getRetryCount(): Promise<number> {
-	const now = Date.now();
-	if (cachedRetryCount && now < cachedRetryCount.expires) return cachedRetryCount.value;
-	const rows = await sql`SELECT value FROM settings WHERE key = 'retry_count'`;
-	const value = rows.length === 0 ? 0 : Number.parseInt(rows[0].value as string, 10) || 0;
-	cachedRetryCount = { value, expires: now + SETTINGS_CACHE_TTL };
-	return value;
+interface CheckerSettings {
+	retryCount: number;
+	checkTimeout: number;
+	userAgent: string;
 }
 
-async function getCheckTimeout(): Promise<number> {
+const SETTINGS_CACHE_TTL = 60_000;
+let cachedCheckerSettings: { value: CheckerSettings; expires: number } | null = null;
+
+async function getCheckerSettings(): Promise<CheckerSettings> {
 	const now = Date.now();
-	if (cachedCheckTimeout && now < cachedCheckTimeout.expires) return cachedCheckTimeout.value;
-	const rows = await sql`SELECT value FROM settings WHERE key = 'check_timeout'`;
-	const value = rows.length === 0 ? 30000 : Number.parseInt(rows[0].value as string, 10) || 30000;
-	cachedCheckTimeout = { value, expires: now + SETTINGS_CACHE_TTL };
+	if (cachedCheckerSettings && now < cachedCheckerSettings.expires) return cachedCheckerSettings.value;
+	const rows = await sql`SELECT key, value FROM settings WHERE key IN ('retry_count', 'check_timeout', 'check_user_agent')`;
+	const map: Record<string, string> = {};
+	for (const row of rows) {
+		map[row.key as string] = row.value as string;
+	}
+	const value: CheckerSettings = {
+		retryCount: Number.parseInt(map.retry_count || "0", 10) || 0,
+		checkTimeout: Number.parseInt(map.check_timeout || "", 10) || DEFAULT_CHECK_TIMEOUT,
+		userAgent: map.check_user_agent?.trim() || DEFAULT_USER_AGENT,
+	};
+	cachedCheckerSettings = { value, expires: now + SETTINGS_CACHE_TTL };
 	return value;
 }
 
 export function invalidateSettingsCache(): void {
-	cachedRetryCount = null;
-	cachedCheckTimeout = null;
+	cachedCheckerSettings = null;
 }
 
 async function shouldSendEmail(service: Service): Promise<boolean> {
@@ -147,16 +168,22 @@ function jsonContains(actual: unknown, expected: unknown): boolean {
 	return true;
 }
 
-async function performSingleCheck(service: Service, timeoutMs: number): Promise<{
+const BODY_SNIPPET_LIMIT = 500;
+
+function truncate(value: string, limit: number): string {
+	return value.length > limit ? `${value.slice(0, limit)}…` : value;
+}
+
+async function performSingleCheck(service: Service, timeoutMs: number, userAgent: string): Promise<{
 	statusCode: number | null;
 	success: boolean;
 	errorMessage: string | null;
+	errorDetails: CheckErrorDetail[] | null;
 	responseTime: number;
 }> {
 	const startTime = performance.now();
 	let statusCode: number | null = null;
-	let success = false;
-	let errorMessage: string | null = null;
+	const details: CheckErrorDetail[] = [];
 
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -165,21 +192,29 @@ async function performSingleCheck(service: Service, timeoutMs: number): Promise<
 		const response = await fetch(service.url, {
 			method: "GET",
 			signal: controller.signal,
-			headers: { "User-Agent": "atums-status/1.0" },
+			headers: { "User-Agent": userAgent },
 		});
 
 		statusCode = response.status;
 
-		const errors: string[] = [];
-
 		if (statusCode !== service.expectedStatus) {
-			errors.push(`Expected status ${service.expectedStatus}, got ${statusCode}`);
+			details.push({
+				type: "status",
+				message: `Expected status ${service.expectedStatus}, got ${statusCode}`,
+				expected: String(service.expectedStatus),
+				actual: `${statusCode}${response.statusText ? ` ${response.statusText}` : ""}`,
+			});
 		}
 
 		if (service.expectedContentType) {
 			const contentType = response.headers.get("content-type") || "";
 			if (!contentType.includes(service.expectedContentType)) {
-				errors.push(`Expected content-type ${service.expectedContentType}, got ${contentType}`);
+				details.push({
+					type: "content-type",
+					message: `Expected content-type ${service.expectedContentType}, got ${contentType || "no content-type"}`,
+					expected: service.expectedContentType,
+					actual: contentType || "(no content-type header)",
+				});
 			}
 		}
 
@@ -196,56 +231,69 @@ async function performSingleCheck(service: Service, timeoutMs: number): Promise<
 			}
 
 			if (!matches) {
-				errors.push(`Response body does not contain expected content`);
+				details.push({
+					type: "body",
+					message: `Response body does not contain expected content`,
+					expected: truncate(service.expectedBody, BODY_SNIPPET_LIMIT),
+					actual: body ? truncate(body, BODY_SNIPPET_LIMIT) : "(empty body)",
+				});
 			}
 		}
 
-		success = errors.length === 0;
-		if (!success) {
-			errorMessage = errors.join("; ");
-		}
 	} catch (err) {
 		if (controller.signal.aborted) {
-			errorMessage = "Request timed out";
+			details.push({
+				type: "timeout",
+				message: `Request timed out after ${timeoutMs}ms`,
+				expected: `response within ${timeoutMs}ms`,
+			});
 		} else if (err instanceof Error) {
 			const cause = (err as Error & { cause?: unknown }).cause;
 			const causeMessage =
 				cause instanceof Error ? cause.message : typeof cause === "string" ? cause : null;
-			errorMessage = causeMessage ? `${err.message}: ${causeMessage}` : err.message || err.name || "Connection failed";
-		} else if (typeof err === "string" && err) {
-			errorMessage = err;
+			const code = (err as Error & { code?: unknown }).code ??
+				(cause instanceof Error ? (cause as Error & { code?: unknown }).code : undefined);
+			details.push({
+				type: "connection",
+				message: causeMessage ? `${err.message}: ${causeMessage}` : err.message || err.name || "Connection failed",
+				actual: typeof code === "string" ? code : err.name !== "Error" ? err.name : undefined,
+			});
 		} else {
-			errorMessage = "Connection failed";
+			details.push({ type: "connection", message: typeof err === "string" && err ? err : "Connection failed" });
 		}
-		success = false;
 	} finally {
 		clearTimeout(timeoutId);
 	}
 
+	const success = details.length === 0;
+
 	return {
 		statusCode,
 		success,
-		errorMessage,
+		errorMessage: success ? null : details.map((d) => d.message).join("; "),
+		errorDetails: success ? null : details,
 		responseTime: Math.round(performance.now() - startTime),
 	};
 }
 
 async function performCheck(service: Service): Promise<ServiceCheck> {
 	const id = randomUUIDv7();
-	const timeoutMs = await getCheckTimeout();
+	const settings = await getCheckerSettings();
+	const timeoutMs = settings.checkTimeout;
+	const userAgent = service.userAgent || settings.userAgent;
 
-	let result = await performSingleCheck(service, timeoutMs);
+	let result = await performSingleCheck(service, timeoutMs, userAgent);
 
-	if (!result.success && (result.errorMessage === "Request timed out" || result.errorMessage === "The operation was aborted.")) {
+	if (result.errorDetails?.some((d) => d.type === "timeout")) {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
-		result = await performSingleCheck(service, timeoutMs);
+		result = await performSingleCheck(service, timeoutMs, userAgent);
 	}
 
-	const { statusCode, success, errorMessage, responseTime } = result;
+	const { statusCode, success, errorMessage, errorDetails, responseTime } = result;
 
 	await sql`
-		INSERT INTO service_checks (id, service_id, status_code, response_time, success, error_message)
-		VALUES (${id}, ${service.id}, ${statusCode}, ${responseTime}, ${success}, ${errorMessage})
+		INSERT INTO service_checks (id, service_id, status_code, response_time, success, error_message, error_details)
+		VALUES (${id}, ${service.id}, ${statusCode}, ${responseTime}, ${success}, ${errorMessage}, ${errorDetails ? JSON.stringify(errorDetails) : null}::jsonb)
 	`;
 
 	lastCheckStatus.set(service.id, success);
@@ -262,7 +310,7 @@ async function performCheck(service: Service): Promise<ServiceCheck> {
 	} else {
 		const failures = (consecutiveFailures.get(service.id) || 0) + 1;
 		consecutiveFailures.set(service.id, failures);
-		const retryCount = await getRetryCount();
+		const { retryCount } = settings;
 		const alreadyNotified = notifiedDown.get(service.id) || false;
 		if (!alreadyNotified && failures > retryCount) {
 			notifiedDown.set(service.id, true);
@@ -279,6 +327,7 @@ async function performCheck(service: Service): Promise<ServiceCheck> {
 		responseTime,
 		success,
 		errorMessage,
+		errorDetails,
 		checkedAt: new Date().toISOString(),
 	};
 
@@ -301,7 +350,7 @@ async function performScheduledCheck(service: Service): Promise<void> {
 
 async function canAccessService(req: Request, serviceId: string): Promise<{ allowed: boolean; service?: Service; response?: Response }> {
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${serviceId}
 	`;
@@ -346,7 +395,7 @@ export async function getForService(
 	const limit = Number(url.searchParams.get("limit")) || 100;
 
 	const rows = await sql`
-		SELECT id, service_id, status_code, response_time, success, error_message, checked_at
+		SELECT id, service_id, status_code, response_time, success, error_message, error_details, checked_at
 		FROM service_checks
 		WHERE service_id = ${serviceId}
 		ORDER BY checked_at DESC
@@ -537,7 +586,7 @@ export async function runCheck(
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${serviceId}
 	`;
@@ -581,7 +630,7 @@ export async function startChecker(
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${serviceId}
 	`;
@@ -670,7 +719,7 @@ export async function initializeCheckers(): Promise<void> {
 	}
 
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE enabled = true
 	`;
@@ -719,7 +768,7 @@ export function checksInFlight(): number {
 
 export async function startCheckerForService(serviceId: string): Promise<void> {
 	const rows = await sql`
-		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
+		SELECT id, name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by, created_at, updated_at
 		FROM services
 		WHERE id = ${serviceId} AND enabled = true
 	`;

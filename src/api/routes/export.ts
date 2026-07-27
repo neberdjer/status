@@ -3,6 +3,7 @@ import { sql } from "../index";
 import type { ExportData, ExportGroup, ExportService } from "../types";
 import { getAuthContext, requireAuth, requireAdmin } from "../utils/auth";
 import { ok, badRequest, unauthorized, forbidden, notFound } from "../utils/response";
+import { sanitizeUserAgent } from "../utils/sanitize";
 import { startCheckerForService } from "./checks";
 
 const EXPORT_VERSION = 1;
@@ -26,6 +27,7 @@ function rowToExportService(row: Record<string, unknown>): ExportService {
 		expectedContentType: row.expected_content_type as string | null,
 		expectedBody: row.expected_body as string | null,
 		checkInterval: row.check_interval as number,
+		userAgent: (row.user_agent as string) || null,
 		enabled: row.enabled as boolean,
 		isPublic: row.is_public as boolean,
 		emailNotifications: (row.email_notifications as boolean) || false,
@@ -47,7 +49,7 @@ export async function exportGlobal(req: Request): Promise<Response> {
 	`;
 
 	const services = await sql`
-		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position
+		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position
 		FROM services
 		ORDER BY position ASC, created_at ASC
 	`;
@@ -93,7 +95,7 @@ export async function exportGroup(
 	}
 
 	const services = await sql`
-		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position
+		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position
 		FROM services
 		WHERE group_name = ${decodedGroupName}
 		ORDER BY position ASC, created_at ASC
@@ -128,7 +130,7 @@ export async function exportService(
 	}
 
 	const services = await sql`
-		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by
+		SELECT name, description, url, display_url, expected_status, expected_content_type, expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by
 		FROM services
 		WHERE id = ${serviceId}
 	`;
@@ -248,12 +250,12 @@ export async function importData(req: Request): Promise<Response> {
 			await sql`
 				INSERT INTO services (
 					id, name, description, url, display_url, expected_status, expected_content_type,
-					expected_body, check_interval, enabled, is_public, email_notifications, group_name, position, created_by
+					expected_body, check_interval, user_agent, enabled, is_public, email_notifications, group_name, position, created_by
 				)
 				VALUES (
 					${id}, ${service.name}, ${service.description}, ${service.url}, ${service.displayUrl},
 					${service.expectedStatus}, ${service.expectedContentType}, ${service.expectedBody},
-					${service.checkInterval}, ${service.enabled}, ${service.isPublic}, ${service.emailNotifications},
+					${service.checkInterval}, ${sanitizeUserAgent(service.userAgent)}, ${service.enabled}, ${service.isPublic}, ${service.emailNotifications},
 					${groupName}, ${position}, ${auth.user.id}
 				)
 			`;

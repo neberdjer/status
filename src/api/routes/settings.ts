@@ -4,6 +4,7 @@ import { getAuthContext, requireAuth, requireAdmin } from "../utils/auth";
 import { ok, badRequest, unauthorized, forbidden } from "../utils/response";
 import { sendTestEmail as sendTest } from "../utils/email";
 import { invalidateSettingsCache } from "./checks";
+import { sanitizeUserAgent } from "../utils/sanitize";
 
 export type { SiteSettings };
 
@@ -41,6 +42,7 @@ export async function getSettings(): Promise<SiteSettings> {
 		emailIsGlobal: map.email_is_global !== "false",
 		emailGroups,
 		retryCount: Number.parseInt(map.retry_count || "0", 10) || 0,
+		checkUserAgent: map.check_user_agent || "",
 	};
 }
 
@@ -78,6 +80,7 @@ export async function update(req: Request): Promise<Response> {
 		emailIsGlobal,
 		emailGroups,
 		retryCount,
+		checkUserAgent,
 	} = body;
 
 	const updates: Array<{ key: string; value: string }> = [];
@@ -148,6 +151,9 @@ export async function update(req: Request): Promise<Response> {
 	if (typeof retryCount === "number") {
 		const count = Math.max(0, Math.min(10, Math.floor(retryCount)));
 		updates.push({ key: "retry_count", value: String(count) });
+	}
+	if (typeof checkUserAgent === "string") {
+		updates.push({ key: "check_user_agent", value: sanitizeUserAgent(checkUserAgent) || "" });
 	}
 
 	if (updates.length === 0) {

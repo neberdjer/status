@@ -110,6 +110,7 @@
 	let creatingInGroup = $state<string | null>(null);
 	let serviceChecks = $state<ServiceCheck[]>([]);
 	let serviceStats = $state<ServiceStats | null>(null);
+	let expandedChecks = $state<Record<string, boolean>>({});
 	let loading = $state(false);
 	let showRecentEvents = $state(false);
 
@@ -307,6 +308,7 @@
 		loading = true;
 		serviceChecks = [];
 		serviceStats = null;
+		expandedChecks = {};
 
 		if (updateUrl) {
 			goto(`${basePath}?modal=${service.id}`, {
@@ -342,6 +344,10 @@
 		serviceChecks = [];
 		serviceStats = null;
 		goto(basePath, { replaceState: false, noScroll: true });
+	}
+
+	function toggleCheckDetails(checkId: string) {
+		expandedChecks[checkId] = !expandedChecks[checkId];
 	}
 
 	function closeEditModal() {
@@ -1765,28 +1771,94 @@
 					<div class="checks-section">
 						<h3>Recent Checks</h3>
 						<div class="checks-list">
-							{#each serviceChecks.slice(0, 20) as check}
-								<div
-									class="check-item"
-									class:success={check.success}
-									class:error={!check.success}
-								>
-									<span class="check-status-dot"></span>
-									<span class="check-time"
-										>{formatShortTime(
-											check.checkedAt,
-										)}</span
+							{#each serviceChecks.slice(0, 20) as check (check.id)}
+								{@const hasDetails =
+									(check.errorDetails?.length ?? 0) > 0}
+								<div class="check-row">
+									<div
+										class="check-item"
+										class:success={check.success}
+										class:error={!check.success}
 									>
-									<span class="check-response"
-										>{formatTime(check.responseTime)}</span
-									>
-									<span class="check-code"
-										>{check.statusCode ?? "err"}</span
-									>
-									{#if check.errorMessage}
-										<span class="check-error"
-											>{check.errorMessage}</span
+										<span class="check-status-dot"></span>
+										<span class="check-time"
+											>{formatShortTime(
+												check.checkedAt,
+											)}</span
 										>
+										<span class="check-response"
+											>{formatTime(
+												check.responseTime,
+											)}</span
+										>
+										<span class="check-code"
+											>{check.statusCode ?? "err"}</span
+										>
+										{#if check.errorMessage}
+											<span class="check-error"
+												>{check.errorMessage}</span
+											>
+										{/if}
+										{#if hasDetails}
+											<button
+												type="button"
+												class="btn sm check-expand"
+												onclick={() =>
+													toggleCheckDetails(
+														check.id,
+													)}
+												aria-expanded={!!expandedChecks[
+													check.id
+												]}
+											>
+												{expandedChecks[check.id]
+													? "hide"
+													: "details"}
+											</button>
+										{/if}
+									</div>
+									{#if hasDetails && expandedChecks[check.id]}
+										<div class="check-details">
+											{#each check.errorDetails ?? [] as detail}
+												<div class="check-detail">
+													<span
+														class="check-detail-type"
+														>{detail.type}</span
+													>
+													<div
+														class="check-detail-body"
+													>
+														<div
+															class="check-detail-message"
+														>
+															{detail.message}
+														</div>
+														{#if detail.expected}
+															<div
+																class="check-detail-kv"
+															>
+																<span
+																	>expected</span
+																>
+																<code
+																	>{detail.expected}</code
+																>
+															</div>
+														{/if}
+														{#if detail.actual}
+															<div
+																class="check-detail-kv"
+															>
+																<span>got</span>
+																<code
+																	>{detail.actual}</code
+																>
+															</div>
+														{/if}
+													</div>
+												</div>
+											{/each}
+										</div>
 									{/if}
 								</div>
 							{/each}
@@ -1837,6 +1909,10 @@
 							{/if}
 							<dt>Check Interval</dt>
 							<dd>{selectedService.checkInterval}s</dd>
+							{#if selectedService.userAgent}
+								<dt>User-Agent</dt>
+								<dd>{selectedService.userAgent}</dd>
+							{/if}
 						</dl>
 					</div>
 				{/if}
@@ -1967,6 +2043,18 @@
 					<label for="edit-expectedContentType"
 						>Expected Content-Type (optional)</label
 					>
+				</div>
+
+				<div class="form-group">
+					<input
+						type="text"
+						id="edit-userAgent"
+						name="userAgent"
+						placeholder=" "
+						maxlength="512"
+						value={editingService.userAgent ?? ""}
+					/>
+					<label for="edit-userAgent">User-Agent (optional)</label>
 				</div>
 
 				<div class="form-group">
@@ -2154,6 +2242,17 @@
 					<label for="create-expectedContentType"
 						>Expected Content-Type (optional)</label
 					>
+				</div>
+
+				<div class="form-group">
+					<input
+						type="text"
+						id="create-userAgent"
+						name="userAgent"
+						placeholder=" "
+						maxlength="512"
+					/>
+					<label for="create-userAgent">User-Agent (optional)</label>
 				</div>
 
 				<div class="form-group">

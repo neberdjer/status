@@ -39,6 +39,7 @@ export async function createService(
 		expectedContentType?: string | null;
 		expectedBody?: string | null;
 		checkInterval?: number;
+		userAgent?: string | null;
 		enabled?: boolean;
 		isPublic?: boolean;
 		emailNotifications?: boolean;
@@ -64,6 +65,7 @@ export async function updateService(
 		expectedContentType?: string | null;
 		expectedBody?: string | null;
 		checkInterval?: number;
+		userAgent?: string | null;
 		enabled?: boolean;
 		isPublic?: boolean;
 		emailNotifications?: boolean;
