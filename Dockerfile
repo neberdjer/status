@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/src ./src
+COPY --from=prerelease /usr/src/app/scripts ./scripts
 COPY --from=prerelease /usr/src/app/static ./static
 COPY --from=prerelease /usr/src/app/build ./build
 COPY --from=prerelease /usr/src/app/package.json .
