@@ -17,32 +17,23 @@ function isAbsoluteHttpUrl(value: string): boolean {
 	}
 }
 
-function resolveInternalUrl(): string {
-	const explicit = env.API_INTERNAL_URL?.trim();
-	if (explicit) return stripTrailingSlash(explicit);
+const API_URLS: string[] = (() => {
+	const pinned = env.API_INTERNAL_URL?.trim();
+	if (pinned) return [stripTrailingSlash(pinned)];
 
 	const port = env.API_PORT?.trim() || "3001";
 	const basePath = stripTrailingSlash(env.API_BASE_PATH?.trim() || "");
-	return `http://127.0.0.1:${port}${basePath}`;
-}
-
-function resolveFallbackUrl(internalUrl: string): string | null {
-	if (env.API_INTERNAL_URL?.trim()) return null;
+	const internal = `http://127.0.0.1:${port}${basePath}`;
 
 	const publicUrl = stripTrailingSlash(publicEnv.PUBLIC_API_URL?.trim() || "");
-	if (!publicUrl || !isAbsoluteHttpUrl(publicUrl)) return null;
-	if (publicUrl === internalUrl) return null;
-
-	return publicUrl;
-}
-
-const INTERNAL_URL = resolveInternalUrl();
-const FALLBACK_URL = resolveFallbackUrl(INTERNAL_URL);
+	return isAbsoluteHttpUrl(publicUrl) && publicUrl !== internal
+		? [internal, publicUrl]
+		: [internal];
+})();
 
 function buildSignal(external?: AbortSignal | null): AbortSignal {
 	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-	if (!external) return timeout;
-	return AbortSignal.any([external, timeout]);
+	return external ? AbortSignal.any([external, timeout]) : timeout;
 }
 
 function describe(err: unknown): string {
@@ -69,30 +60,22 @@ export async function request<T>(path: string, options?: RequestOptions): Promis
 		},
 	};
 
-	let url = `${INTERNAL_URL}${path}`;
-	let response: Response;
+	let response: Response | undefined;
+	let url = "";
+	const failures: string[] = [];
 
-	try {
-		response = await fetch(url, { ...fetchInit, signal: buildSignal(signal) });
-	} catch (err) {
-		if (!FALLBACK_URL) {
-			throw new Error(`API unreachable: ${method} ${url} (${describe(err)})`);
-		}
-
-		const internalError = describe(err);
-		url = `${FALLBACK_URL}${path}`;
-
+	for (const base of API_URLS) {
+		url = `${base}${path}`;
 		try {
 			response = await fetch(url, { ...fetchInit, signal: buildSignal(signal) });
-		} catch (fallbackErr) {
-			throw new Error(
-				`API unreachable: ${method} ${INTERNAL_URL}${path} (${internalError}) and ${url} (${describe(fallbackErr)})`,
-			);
+			break;
+		} catch (err) {
+			failures.push(`${url} (${describe(err)})`);
 		}
 	}
 
-	if (response.status === 204) {
-		return undefined as T;
+	if (!response) {
+		throw new Error(`API unreachable: ${method} ${failures.join(" and ")}`);
 	}
 
 	const raw = await response.text();

@@ -176,3 +176,5 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
 		recentEvents,
 	};
 };
+
+export { statusPageActions as actions } from "$lib/server/actions";

@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+
+jobs:
+  verify:
+    runs-on: docker
+    container:
+      image: oven/bun:latest
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq nodejs git
+      - uses: actions/checkout@v4
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run check
+        if: always()
+
+  docker-build:
+    needs: [verify]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    runs-on: privileged
+    container:
+      image: docker:cli
+    steps:
+      - run: apk add --no-cache nodejs git
+      - uses: actions/checkout@v4
+      - name: Login
+        env:
+          REGISTRY: ${{ vars.DOCKER_REGISTRY }}
+          USERNAME: ${{ secrets.DOCKER_REGISTRY_USER }}
+          TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login -u "$USERNAME" --password-stdin "$REGISTRY"
+      - name: Build and push
+        env:
+          IMAGE: ${{ vars.DOCKER_IMAGE_NAME }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          docker build -t "$IMAGE:$SHA" -t "$IMAGE:$BRANCH" .
+          docker push "$IMAGE:$SHA"
+          docker push "$IMAGE:$BRANCH"
+          if [ "$BRANCH" = "main" ]; then
+            docker tag "$IMAGE:$SHA" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi

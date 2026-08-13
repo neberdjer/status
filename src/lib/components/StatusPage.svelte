@@ -29,6 +29,14 @@
 		isGroupView ? `/${encodeURIComponent(data.currentGroup!)}` : "/",
 	);
 
+	async function postAction(action: string, fields: Record<string, string>) {
+		const formData = new FormData();
+		for (const [key, value] of Object.entries(fields)) {
+			formData.set(key, value);
+		}
+		await fetch(`?/${action}`, { method: "POST", body: formData });
+	}
+
 	let liveChecks = $state<Record<string, ServiceCheck | null>>({});
 	const checks = $derived<Record<string, ServiceCheck | null>>({
 		...data.checks,
@@ -381,13 +389,9 @@
 			return;
 		}
 
-		const formData = new FormData();
-		formData.set("oldName", editingGroupName);
-		formData.set("newName", newGroupName.trim());
-
-		await fetch("/?/renameGroup", {
-			method: "POST",
-			body: formData,
+		await postAction("renameGroup", {
+			oldName: editingGroupName,
+			newName: newGroupName.trim(),
 		});
 
 		closeRenameGroup();
@@ -395,25 +399,15 @@
 	}
 
 	async function deleteGroup(groupName: string) {
-		const formData = new FormData();
-		formData.set("name", groupName);
-
-		await fetch("/?/deleteGroup", {
-			method: "POST",
-			body: formData,
-		});
+		await postAction("deleteGroup", { name: groupName });
 
 		await invalidateAll();
 	}
 
 	async function toggleGroupEmail(groupName: string, enabled: boolean) {
-		const formData = new FormData();
-		formData.set("name", groupName);
-		formData.set("emailNotifications", String(enabled));
-
-		await fetch("/?/toggleGroupEmail", {
-			method: "POST",
-			body: formData,
+		await postAction("toggleGroupEmail", {
+			name: groupName,
+			emailNotifications: String(enabled),
 		});
 
 		await invalidateAll();
@@ -422,15 +416,11 @@
 	async function createGroup() {
 		if (!newGroupInput.trim()) return;
 
-		const formData = new FormData();
-		formData.set("name", newGroupInput.trim());
-		if (selectedMasterForSubGroup) {
-			formData.set("parentGroupName", selectedMasterForSubGroup);
-		}
-
-		await fetch("/?/createGroup", {
-			method: "POST",
-			body: formData,
+		await postAction("createGroup", {
+			name: newGroupInput.trim(),
+			...(selectedMasterForSubGroup
+				? { parentGroupName: selectedMasterForSubGroup }
+				: {}),
 		});
 
 		newGroupInput = "";
@@ -442,13 +432,7 @@
 	async function createMasterGroup() {
 		if (!newMasterGroupInput.trim()) return;
 
-		const formData = new FormData();
-		formData.set("name", newMasterGroupInput.trim());
-
-		await fetch("/?/createGroup", {
-			method: "POST",
-			body: formData,
-		});
+		await postAction("createGroup", { name: newMasterGroupInput.trim() });
 
 		newMasterGroupInput = "";
 		creatingMasterGroup = false;
@@ -459,13 +443,9 @@
 		groupName: string,
 		parentName: string | null,
 	) {
-		const formData = new FormData();
-		formData.set("name", groupName);
-		formData.set("parentGroupName", parentName ?? "");
-
-		await fetch("/?/setGroupParent", {
-			method: "POST",
-			body: formData,
+		await postAction("setGroupParent", {
+			name: groupName,
+			parentGroupName: parentName ?? "",
 		});
 
 		await invalidateAll();
@@ -567,12 +547,8 @@
 	async function savePositions(
 		positions: Array<{ id: string; position: number; groupName?: string }>,
 	) {
-		const formData = new FormData();
-		formData.set("positions", JSON.stringify(positions));
-
-		await fetch("/?/updatePositions", {
-			method: "POST",
-			body: formData,
+		await postAction("updatePositions", {
+			positions: JSON.stringify(positions),
 		});
 		await invalidateAll();
 	}
@@ -580,12 +556,8 @@
 	async function saveGroupPositions(
 		positions: Array<{ name: string; position: number }>,
 	) {
-		const formData = new FormData();
-		formData.set("positions", JSON.stringify(positions));
-
-		await fetch("/?/updateGroupPositions", {
-			method: "POST",
-			body: formData,
+		await postAction("updateGroupPositions", {
+			positions: JSON.stringify(positions),
 		});
 		await invalidateAll();
 	}
@@ -1289,7 +1261,7 @@
 												>
 												<form
 													method="POST"
-													action="/?/delete"
+													action="?/delete"
 													class="action-form"
 													use:enhance
 												>
@@ -1461,7 +1433,7 @@
 										>
 										<form
 											method="POST"
-											action="/?/delete"
+											action="?/delete"
 											class="action-form"
 											use:enhance
 										>
@@ -1952,7 +1924,7 @@
 
 			<form
 				method="POST"
-				action="/?/edit"
+				action="?/edit"
 				class="form"
 				use:enhance={handleFormResult}
 			>
@@ -2153,7 +2125,7 @@
 
 			<form
 				method="POST"
-				action="/?/create"
+				action="?/create"
 				class="form"
 				use:enhance={handleFormResult}
 			>
